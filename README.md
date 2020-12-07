@@ -13,7 +13,7 @@ kubectl create -k https://github.com/Sh4d1/scaleway-k8s-vpc/config/default
 
 Create and enter your Scaleway credentials with:
 ```yaml
-kubectl create -f secret.yaml --edit
+kubectl create -f https://raw.githubusercontent.com/Sh4d1/scaleway-k8s-vpc/main/secret.yaml --edit --namespace scaleway-k8s-vpc-system
 ```
 
 You can now create the following PrivateNetwork object:
