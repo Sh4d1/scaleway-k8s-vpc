@@ -1,0 +1,45 @@
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node
+  namespace: system
+  labels:
+    control-plane: node
+spec:
+  selector:
+    matchLabels:
+      control-plane: node
+  template:
+    metadata:
+      labels:
+        control-plane: node
+    spec:
+      serviceAccountName: node
+      priorityClassName: system-node-critical
+      hostNetwork: true
+      containers:
+      - command:
+        - /node
+        image: sh4d1/scaleway-k8s-vpc-node:latest
+        name: node
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.nodeName
+        resources:
+          limits:
+            cpu: 100m
+            memory: 30Mi
+          requests:
+            cpu: 100m
+            memory: 20Mi
+        securityContext:
+          capabilities:
+            add:
+            - NET_ADMIN
+            - SYS_MODULE
+          privileged: true
+      terminationGracePeriodSeconds: 10

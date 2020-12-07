@@ -1,0 +1,7 @@
+resources:
+- controller.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+images:
+- name: controller
+  newName: sh4d1/scaleway-k8s-vpc

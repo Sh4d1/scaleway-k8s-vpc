@@ -1,0 +1,7 @@
+resources:
+- node.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+images:
+- name: node
+  newName: sh4d1/scaleway-k8s-vpc-node

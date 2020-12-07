@@ -1,0 +1,10 @@
+apiVersion: vpc.scaleway.com/v1alpha1
+kind: PrivateNetwork
+metadata:
+  name: privatenetwork-sample
+spec:
+  id: f8746895-a6bf-4ad2-8b66-ec98041ed4ca
+  cidr: 192.168.0.0/24
+  routes:
+  - to: 1.2.3.4/16
+    via: 192.168.0.10

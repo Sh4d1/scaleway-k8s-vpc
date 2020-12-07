@@ -1,0 +1,24 @@
+# permissions for end users to edit privatenetworks.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: privatenetwork-editor-role
+rules:
+- apiGroups:
+  - vpc.scaleway.com
+  resources:
+  - privatenetworks
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - vpc.scaleway.com
+  resources:
+  - privatenetworks/status
+  verbs:
+  - get

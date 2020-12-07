@@ -1,0 +1,10 @@
+domain: scaleway.com
+repo: github.com/Sh4d1/scaleway-k8s-vpc
+resources:
+- group: vpc
+  kind: PrivateNetwork
+  version: v1alpha1
+- group: vpc
+  kind: NetworkInterface
+  version: v1alpha1
+version: "2"

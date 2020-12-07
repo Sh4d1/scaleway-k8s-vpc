@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    control-plane: controller
+  name: system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller
+  namespace: system
+  labels:
+    control-plane: controller
+spec:
+  selector:
+    matchLabels:
+      control-plane: controller
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        control-plane: controller
+    spec:
+      serviceAccountName: controller
+      containers:
+      - command:
+        - /controller
+        env:
+        - name: CONFIGMAP_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        envFrom:
+        - secretRef:
+            name: scaleway-k8s-vpc-secret
+        args:
+        - --enable-leader-election
+        image: sh4d1/scaleway-k8s-vpc:latest
+        name: controller
+        resources:
+          limits:
+            cpu: 100m
+            memory: 30Mi
+          requests:
+            cpu: 100m
+            memory: 20Mi
+      terminationGracePeriodSeconds: 10
