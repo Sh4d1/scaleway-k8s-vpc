@@ -86,7 +86,7 @@ docker-push:
 
 docker-buildx-all:
 	@echo "Making release for tag $(IMAGE_TAG)"
-	docker buildx build --platform=$(ALL_PLATFORM) -f Dockerfile.contoller --push -t $(CONTROLLER_FULL_IMG):$(IMAGE_TAG) .
+	docker buildx build --platform=$(ALL_PLATFORM) -f Dockerfile.controller --push -t $(CONTROLLER_FULL_IMG):$(IMAGE_TAG) .
 	docker buildx build --platform=$(ALL_PLATFORM) -f Dockerfile.node --push -t $(NODE_FULL_IMG):$(IMAGE_TAG) .
 
 release: docker-buildx-all
