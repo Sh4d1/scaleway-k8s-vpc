@@ -268,13 +268,9 @@ func (r *PrivateNetworkReconciler) Reconcile(req ctrl.Request) (ctrl.Result, err
 				log.Error(err, fmt.Sprintf("error acquiring ip for cidr %s", prefix.Cidr))
 				return ctrl.Result{RequeueAfter: RequeueDuration}, err
 			}
-			ipnet, err := prefix.IPNet()
-			if err != nil {
-				log.Error(err, "failed to get ipnet from prefix")
-				return ctrl.Result{RequeueAfter: RequeueDuration}, err
-			}
+
 			// TODO have a better idea :D
-			nic.Spec.Address = ip.IP.String() + "/" + strings.Split(ipnet.String(), "/")[1]
+			nic.Spec.Address = ip.IP.String() + "/" + strings.Split(prefix.Cidr, "/")[1]
 			nic.Spec.ID = privateNIC.ID
 			err = r.Client.Create(ctx, nic)
 			if err != nil {
