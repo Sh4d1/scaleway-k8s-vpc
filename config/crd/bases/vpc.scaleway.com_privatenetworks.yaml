@@ -4,7 +4,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.3.0
+    controller-gen.kubebuilder.io/version: v0.5.0
   creationTimestamp: null
   name: privatenetworks.vpc.scaleway.com
 spec:
@@ -34,14 +34,10 @@ spec:
         description: PrivateNetwork is the Schema for the privatenetworks API
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
             type: string
           metadata:
             type: object
@@ -54,9 +50,12 @@ spec:
               id:
                 description: ID is the ID of the PrivateNetwork
                 type: string
+              masquerade:
+                default: true
+                description: Masquerade represents whether the private network needs to be masqueraded
+                type: boolean
               routes:
-                description: Routes are the routes injected in the cluster to this
-                  PrivateNetwork
+                description: Routes are the routes injected in the cluster to this PrivateNetwork
                 items:
                   description: PrivateNetworkRoute defines a route from the PrivateNetwork
                   properties:
@@ -70,8 +69,7 @@ spec:
                   type: object
                 type: array
               zone:
-                description: Zone is the Zone of the PrivateNetwork Will default to
-                  the SCW_DEFAULT_ZONE env variable
+                description: Zone is the Zone of the PrivateNetwork Will default to the SCW_DEFAULT_ZONE env variable
                 type: string
             required:
             - cidr
