@@ -29,7 +29,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	vpcv1alpha1 "github.com/Sh4d1/scaleway-k8s-vpc/api/v1alpha1"
-	"github.com/Sh4d1/scaleway-k8s-vpc/controllers"
+	"github.com/Sh4d1/scaleway-k8s-vpc/nodes"
 	"github.com/Sh4d1/scaleway-k8s-vpc/pkg/nics"
 	instance "github.com/scaleway/scaleway-sdk-go/api/instance/v1"
 	// +kubebuilder:scaffold:imports
@@ -92,7 +92,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controllers.NetworkInterfaceReconciler{
+	if err = (&nodes.NetworkInterfaceReconciler{
 		Client:      mgr.GetClient(),
 		Log:         ctrl.Log.WithName("controllers").WithName("NetworkInterface"),
 		Scheme:      mgr.GetScheme(),

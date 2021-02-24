@@ -18,14 +18,16 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"net"
+	"strings"
 	"time"
 
-	"github.com/coreos/go-iptables/iptables"
 	"github.com/go-logr/logr"
+	goipam "github.com/metal-stack/go-ipam"
 	instance "github.com/scaleway/scaleway-sdk-go/api/instance/v1"
-	"github.com/vishvananda/netlink"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
@@ -38,7 +40,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	vpcv1alpha1 "github.com/Sh4d1/scaleway-k8s-vpc/api/v1alpha1"
-	"github.com/Sh4d1/scaleway-k8s-vpc/pkg/nics"
+	"github.com/Sh4d1/scaleway-k8s-vpc/internal/constants"
 )
 
 // NetworkInterfaceReconciler reconciles a NetworkInterface object
@@ -46,14 +48,14 @@ type NetworkInterfaceReconciler struct {
 	client.Client
 	Log         logr.Logger
 	Scheme      *runtime.Scheme
-	MetadataAPI *instance.MetadataAPI
-	NodeName    string
-	NICs        *nics.NICs
+	IPAM        goipam.Ipamer
+	InstanceAPI *instance.API
 }
 
 // +kubebuilder:rbac:groups=vpc.scaleway.com,resources=networkinterfaces,verbs=get;list;watch;update
 // +kubebuilder:rbac:groups=vpc.scaleway.com,resources=networkinterfaces/status,verbs=get;update
 // +kubebuilder:rbac:groups=vpc.scaleway.com,resources=privatenetworks,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
 
 func (r *NetworkInterfaceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	ctx := context.Background()
@@ -67,120 +69,93 @@ func (r *NetworkInterfaceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, e
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	if nic.Spec.NodeName != r.NodeName {
+	node := corev1.Node{}
+	err = r.Client.Get(ctx, types.NamespacedName{Name: nic.Spec.NodeName}, &node)
+	if err != nil && !apierrors.IsNotFound(err) {
+		log.Error(err, "error getting node")
+		return ctrl.Result{}, err
+	}
+
+	nodeDeleted := err != nil && apierrors.IsNotFound(err)
+
+	if nic.ObjectMeta.GetDeletionTimestamp().IsZero() {
+		if nodeDeleted {
+			err := r.Client.Delete(ctx, nic)
+			if err != nil {
+				log.Error(err, fmt.Sprintf("failed to delete networkInterface %s", nic.Name))
+				return ctrl.Result{}, err
+			}
+			return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
+		}
+		// nothing to do
 		return ctrl.Result{}, nil
 	}
-	if nic.Status.MacAddress == "" {
-		return ctrl.Result{RequeueAfter: time.Second * 1}, nil
+
+	// nic is deleting
+
+	if controllerutil.ContainsFinalizer(nic, constants.FinalizerName) && nodeDeleted {
+		controllerutil.RemoveFinalizer(nic, constants.FinalizerName)
+		err = r.Client.Update(ctx, nic)
+		if err != nil {
+			log.Error(err, fmt.Sprintf("failed to patch networkInterface %s", nic.Name))
+			return ctrl.Result{}, err
+		}
+		//return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
 	}
 
-	if !nic.ObjectMeta.GetDeletionTimestamp().IsZero() {
-		if controllerutil.ContainsFinalizer(nic, finalizerName) {
-			err := r.NICs.TearDownLink(nic.Status.MacAddress, nic.Spec.Address)
-			if err != nil {
-				log.Error(err, "unable to tear down link")
+	if !controllerutil.ContainsFinalizer(nic, constants.FinalizerName) {
+		pn := vpcv1alpha1.PrivateNetwork{}
+		err = r.Client.Get(ctx, types.NamespacedName{Name: nic.OwnerReferences[0].Name}, &pn)
+		if err != nil {
+			log.Error(err, "unable to get private network")
+			return ctrl.Result{}, err
+		}
+
+		err := r.IPAM.ReleaseIPFromPrefix(pn.Spec.CIDR, strings.Split(nic.Spec.Address, "/")[0])
+		if err != nil {
+			if !errors.As(err, &goipam.NotFoundError{}) {
+				log.Error(err, fmt.Sprintf("could not delete IP %s from prefix %s", nic.Spec.Address, pn.Spec.CIDR))
 				return ctrl.Result{}, err
 			}
-			controllerutil.RemoveFinalizer(nic, finalizerName)
-			err = r.Client.Update(ctx, nic)
+		}
+		node := corev1.Node{}
+		err = r.Client.Get(ctx, types.NamespacedName{Name: nic.Spec.NodeName}, &node)
+		if err != nil && !apierrors.IsNotFound(err) {
+			log.Error(err, "error getting node")
+			return ctrl.Result{}, err
+		}
+		if err == nil {
+			server, err := getServerFromNode(r.InstanceAPI, &node)
 			if err != nil {
-				log.Error(err, fmt.Sprintf("failed to patch networkInterface %s", nic.Name))
+				log.Error(err, "error getting server from node")
 				return ctrl.Result{}, err
 			}
+			privateNicID := ""
+			for _, pnic := range server.PrivateNics {
+				if pnic.PrivateNetworkID == pn.Spec.ID {
+					privateNicID = pnic.ID
+					break
+				}
+			}
+			if privateNicID != "" {
+				err := r.InstanceAPI.DeletePrivateNIC(&instance.DeletePrivateNICRequest{
+					Zone:         server.Zone,
+					PrivateNicID: privateNicID,
+					ServerID:     server.ID,
+				})
+				if err != nil {
+					log.Error(err, "unable to delete private nic from server")
+					return ctrl.Result{}, err
+				}
+			}
 		}
-	}
 
-	md, err := r.MetadataAPI.GetMetadata()
-	if err != nil {
-		log.Error(err, "unable to get metadata")
-		return ctrl.Result{}, err
-	}
-
-	found := false
-	for _, n := range md.PrivateNICs {
-		if n.MacAddress == nic.Status.MacAddress {
-			found = true
-			break
-		}
-	}
-	if !found {
-		err := fmt.Errorf("nic not found on node")
-		log.Error(err, "unable to find nic")
-		return ctrl.Result{}, err
-	}
-
-	linkName, err := r.NICs.GetLinkName(nic.Status.MacAddress)
-	if err != nil {
-		log.Error(err, "unable to get link")
-		return ctrl.Result{}, err
-	}
-
-	nic.Status.LinkName = linkName
-	err = r.Client.Status().Update(ctx, nic)
-	if err != nil {
-		log.Error(err, "unable to update status")
-		return ctrl.Result{}, err
-	}
-
-	err = r.NICs.ConfigureLink(nic.Status.MacAddress, nic.Spec.Address)
-	if err != nil {
-		log.Error(err, "unable to configure link")
-		return ctrl.Result{}, err
-	}
-
-	pnet := vpcv1alpha1.PrivateNetwork{}
-	err = r.Client.Get(ctx, types.NamespacedName{Name: nic.OwnerReferences[0].Name}, &pnet)
-	if err != nil {
-		log.Error(err, "unable to get private network")
-		return ctrl.Result{}, err
-	}
-
-	ip, err := iptables.New()
-	if err != nil {
-		log.Error(err, "unable to create iptables helper")
-		return ctrl.Result{}, err
-	}
-
-	isMasquerade, err := ip.Exists("nat", "POSTROUTING", "-o", linkName, "-j", "MASQUERADE")
-	if err != nil {
-		log.Error(err, "unable to check masquerade iptables rules")
-		return ctrl.Result{}, err
-	}
-
-	if pnet.Spec.Masquerade && !isMasquerade {
-		err := ip.AppendUnique("nat", "POSTROUTING", "-o", linkName, "-j", "MASQUERADE")
+		controllerutil.RemoveFinalizer(nic, constants.IPFinalizerName)
+		err = r.Client.Update(ctx, nic)
 		if err != nil {
-			log.Error(err, "unable to append masquerade iptables rule")
+			log.Error(err, fmt.Sprintf("failed to remove finalizer on networkInterface %s", nic.Name))
 			return ctrl.Result{}, err
 		}
-	}
-
-	if !pnet.Spec.Masquerade && isMasquerade {
-		err := ip.DeleteIfExists("nat", "POSTROUTING", "-o", linkName, "-j", "MASQUERADE")
-		if err != nil {
-			log.Error(err, "unable to delete masquerade iptables rule")
-			return ctrl.Result{}, err
-		}
-	}
-
-	routes := []nics.Route{}
-	for _, route := range pnet.Spec.Routes {
-		via := net.ParseIP(route.Via)
-		to, err := netlink.ParseIPNet(route.To)
-		if err != nil {
-			log.Error(err, fmt.Sprintf("unable to parse to route %s", route.To))
-			return ctrl.Result{}, err
-		}
-		routes = append(routes, nics.Route{
-			To:  to,
-			Via: via,
-		})
-	}
-
-	err = r.NICs.SyncRoutes(nic.Status.MacAddress, routes)
-	if err != nil {
-		log.Error(err, "unable to sync routes")
-		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
@@ -190,22 +165,20 @@ func (r *NetworkInterfaceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&vpcv1alpha1.NetworkInterface{}).
 		Watches(&source.Kind{
-			Type: &vpcv1alpha1.PrivateNetwork{},
+			Type: &corev1.Node{},
 		}, &handler.Funcs{
-			UpdateFunc: func(e event.UpdateEvent, q workqueue.RateLimitingInterface) {
-				r.Log.Info("got update PrivateNetwork event")
+			DeleteFunc: func(e event.DeleteEvent, q workqueue.RateLimitingInterface) {
 				nicsList := &vpcv1alpha1.NetworkInterfaceList{}
 				err := r.Client.List(context.Background(), nicsList,
 					client.MatchingLabels{
-						privateNetworkLabel: e.MetaNew.GetName(),
+						constants.NodeLabel: e.Meta.GetName(),
 					},
 				)
 				if err != nil {
-					r.Log.Error(err, "unable to sync nics on privateNetwork update")
+					r.Log.Error(err, "unable to sync privatenetwork on node creation")
 					return
 				}
 				for _, nic := range nicsList.Items {
-					r.Log.Info(fmt.Sprintf("adding event for nic %s", nic.Name))
 					q.Add(reconcile.Request{
 						NamespacedName: types.NamespacedName{
 							Name: nic.Name,
