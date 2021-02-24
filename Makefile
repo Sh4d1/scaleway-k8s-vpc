@@ -32,7 +32,7 @@ all: controller node
 
 # Run tests
 test: kubebuilder-bin generate fmt vet manifests
-	go test ./... -coverprofile cover.out
+	TEST_ASSET_KUBE_APISERVER=$(TEST_ASSET_KUBE_APISERVER) TEST_ASSET_ETCD=$(TEST_ASSET_ETCD) TEST_ASSET_KUBECTL=$(TEST_ASSET_KUBECTL) go test ./... -coverprofile cover.out
 
 kubebuilder-bin:
 	curl -fsSL https://github.com/kubernetes-sigs/kubebuilder/releases/download/v$(KUBEBUILDER_VERSION)/kubebuilder_$(KUBEBUILDER_VERSION)_$(OS)_$(ARCH).tar.gz -o kubebuilder-tools.tar.gz
@@ -93,13 +93,13 @@ generate: controller-gen
 
 # Build the docker image
 docker-build: test
-	docker build --platform=linux/$(ARCH) -f Dockerfile.controller . -t ${CONTROLLER_FULL_IMG}
-	docker build --platform=linux/$(ARCH) -f Dockerfile.node . -t ${NODE_FULL_IMG}
+	docker build --platform=linux/$(ARCH) -f Dockerfile.controller . -t ${CONTROLLER_FULL_IMG}:$(IMAGE_TAG)
+	docker build --platform=linux/$(ARCH) -f Dockerfile.node . -t ${NODE_FULL_IMG}:$(IMAGE_TAG)
 
 # Push the docker image
 docker-push:
-	docker push ${CONTROLLER_FULL_IMG}
-	docker push ${NODE_FULL_IMG}
+	docker push ${CONTROLLER_FULL_IMG}:$(IMAGE_TAG)
+	docker push ${NODE_FULL_IMG}:$(IMAGE_TAG)
 
 docker-buildx-all:
 	@echo "Making release for tag $(IMAGE_TAG)"
