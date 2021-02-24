@@ -36,6 +36,11 @@ type PrivateNetworkSpec struct {
 	// Routes are the routes injected in the cluster to this PrivateNetwork
 	// +optional
 	Routes []PrivateNetworkRoute `json:"routes,omitempty"`
+
+	// Masquerade represents whether the private network needs to be masqueraded
+	// +optional
+	// +kubebuilder:default:=true
+	Masquerade bool `json:"masquerade,omitempty"`
 }
 
 // PrivateNetworkRoute defines a route from the PrivateNetwork

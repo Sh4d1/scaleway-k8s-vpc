@@ -22,6 +22,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/coreos/go-iptables/iptables"
 	"github.com/go-logr/logr"
 	instance "github.com/scaleway/scaleway-sdk-go/api/instance/v1"
 	"github.com/vishvananda/netlink"
@@ -132,6 +133,34 @@ func (r *NetworkInterfaceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, e
 	if err != nil {
 		log.Error(err, "unable to get private network")
 		return ctrl.Result{}, err
+	}
+
+	ip, err := iptables.New()
+	if err != nil {
+		log.Error(err, "unable to create iptables helper")
+		return ctrl.Result{}, err
+	}
+
+	isMasquerade, err := ip.Exists("nat", "POSTROUTING", "-o", linkName, "-j", "MASQUERADE")
+	if err != nil {
+		log.Error(err, "unable to check masquerade iptables rules")
+		return ctrl.Result{}, err
+	}
+
+	if pnet.Spec.Masquerade && !isMasquerade {
+		err := ip.AppendUnique("nat", "POSTROUTING", "-o", linkName, "-j", "MASQUERADE")
+		if err != nil {
+			log.Error(err, "unable to append masquerade iptables rule")
+			return ctrl.Result{}, err
+		}
+	}
+
+	if !pnet.Spec.Masquerade && isMasquerade {
+		err := ip.DeleteIfExists("nat", "POSTROUTING", "-o", linkName, "-j", "MASQUERADE")
+		if err != nil {
+			log.Error(err, "unable to delete masquerade iptables rule")
+			return ctrl.Result{}, err
+		}
 	}
 
 	routes := []nics.Route{}
