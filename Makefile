@@ -15,6 +15,12 @@ DOCKER_CLI_EXPERIMENTAL ?= enabled
 
 CRD_OPTIONS ?= "crd:crdVersions=v1"
 
+KUBEBUILDER_VERSION=2.3.1
+
+TEST_ASSET_KUBE_APISERVER ?= $(shell pwd)/kubebuilder-bin/kube-apiserver
+TEST_ASSET_ETCD ?= $(shell pwd)/kubebuilder-bin/etcd
+TEST_ASSET_KUBECTL ?= $(shell pwd)/kubebuilder-bin/kubectl
+
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
 GOBIN=$(shell go env GOPATH)/bin
@@ -25,8 +31,19 @@ endif
 all: controller node
 
 # Run tests
-test: generate fmt vet manifests
+test: kubebuilder-bin generate fmt vet manifests
 	go test ./... -coverprofile cover.out
+
+kubebuilder-bin:
+	curl -fsSL https://github.com/kubernetes-sigs/kubebuilder/releases/download/v$(KUBEBUILDER_VERSION)/kubebuilder_$(KUBEBUILDER_VERSION)_$(OS)_$(ARCH).tar.gz -o kubebuilder-tools.tar.gz
+	mkdir kubebuilder-bin
+	tar -xvf kubebuilder-tools.tar.gz
+	mv kubebuilder_$(KUBEBUILDER_VERSION)_$(OS)_$(ARCH)/bin/* kubebuilder-bin/
+	rm kubebuilder-tools.tar.gz
+	rm -R kubebuilder_$(KUBEBUILDER_VERSION)_$(OS)_$(ARCH)
+
+clean-kubebuilder:
+	rm -Rf kubebuilder-bin/
 
 # Build controller binary
 controller: generate fmt vet
