@@ -30,7 +30,6 @@ import (
 	vpc "github.com/scaleway/scaleway-sdk-go/api/vpc/v1"
 	"github.com/scaleway/scaleway-sdk-go/scw"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -44,14 +43,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	vpcv1alpha1 "github.com/Sh4d1/scaleway-k8s-vpc/api/v1alpha1"
+	"github.com/Sh4d1/scaleway-k8s-vpc/internal/constants"
 )
 
 const (
-	ipFinalizerName     = "scaleway.com/finalizer-ip"
-	finalizerName       = "scaleway.com/finalizer"
-	privateNetworkLabel = "private-network"
-	nodeLabel           = "node"
-
 	regexpProduct      = "product"
 	regexpLocalization = "localization"
 	regexpUUID         = "uuid"
@@ -99,21 +94,13 @@ func (r *PrivateNetworkReconciler) Reconcile(req ctrl.Request) (ctrl.Result, err
 		return ctrl.Result{}, err
 	}
 
-	if pn.ObjectMeta.GetDeletionTimestamp().IsZero() {
-		if !controllerutil.ContainsFinalizer(pn, finalizerName) {
-			controllerutil.AddFinalizer(pn, finalizerName)
-			if err := r.Update(ctx, pn); err != nil {
-				log.Error(err, "failed to add finalizer")
-				return ctrl.Result{}, err
-			}
-		}
-	} else {
+	if !pn.ObjectMeta.GetDeletionTimestamp().IsZero() {
 		// deletion
-		if controllerutil.ContainsFinalizer(pn, finalizerName) {
+		if controllerutil.ContainsFinalizer(pn, constants.FinalizerName) {
 			nicsList := &vpcv1alpha1.NetworkInterfaceList{}
 			err = r.Client.List(ctx, nicsList,
 				client.MatchingLabels{
-					privateNetworkLabel: pn.Name,
+					constants.PrivateNetworkLabel: pn.Name,
 				},
 			)
 			if err != nil {
@@ -128,54 +115,6 @@ func (r *PrivateNetworkReconciler) Reconcile(req ctrl.Request) (ctrl.Result, err
 						log.Error(err, fmt.Sprintf("failed to delete networkInterface %s", nic.Name))
 						return ctrl.Result{}, err
 					}
-				} else {
-					if !controllerutil.ContainsFinalizer(&nic, finalizerName) {
-						err := r.IPAM.ReleaseIPFromPrefix(pn.Spec.CIDR, strings.Split(nic.Spec.Address, "/")[0])
-						if err != nil {
-							if !errors.As(err, &goipam.NotFoundError{}) {
-								log.Error(err, fmt.Sprintf("could not delete IP %s from prefix %s", nic.Spec.Address, pn.Spec.CIDR))
-								return ctrl.Result{}, err
-							}
-						}
-						node := corev1.Node{}
-						err = r.Client.Get(ctx, types.NamespacedName{Name: nic.Spec.NodeName}, &node)
-						if err != nil && !apierrors.IsNotFound(err) {
-							log.Error(err, "error getting node")
-							return ctrl.Result{}, err
-						}
-						if err == nil {
-							server, err := r.getServerFromNode(&node)
-							if err != nil {
-								log.Error(err, "error getting server from node")
-								return ctrl.Result{}, err
-							}
-							privateNicID := ""
-							for _, pnic := range server.PrivateNics {
-								if pnic.PrivateNetworkID == pn.Spec.ID {
-									privateNicID = pnic.ID
-									break
-								}
-							}
-							if privateNicID != "" {
-								err := r.InstanceAPI.DeletePrivateNIC(&instance.DeletePrivateNICRequest{
-									Zone:         server.Zone,
-									PrivateNicID: privateNicID,
-									ServerID:     server.ID,
-								})
-								if err != nil {
-									log.Error(err, "unable to delete private nic from server")
-									return ctrl.Result{}, err
-								}
-							}
-						}
-
-						controllerutil.RemoveFinalizer(&nic, ipFinalizerName)
-						err = r.Client.Update(ctx, &nic)
-						if err != nil {
-							log.Error(err, fmt.Sprintf("failed to delete networkInterface %s", nic.Name))
-							return ctrl.Result{}, err
-						}
-					}
 				}
 			}
 			if len(nicsList.Items) == 0 {
@@ -186,18 +125,26 @@ func (r *PrivateNetworkReconciler) Reconcile(req ctrl.Request) (ctrl.Result, err
 						return ctrl.Result{}, err
 					}
 				}
-				controllerutil.RemoveFinalizer(pn, finalizerName)
+				controllerutil.RemoveFinalizer(pn, constants.FinalizerName)
 				if err := r.Update(ctx, pn); err != nil {
 					log.Error(err, "failed to add finalizer")
 					return ctrl.Result{}, err
 				}
 				return ctrl.Result{}, nil
 			}
-
 			return ctrl.Result{RequeueAfter: RequeueDuration}, nil
 		}
 		return ctrl.Result{}, nil
 	}
+
+	if !controllerutil.ContainsFinalizer(pn, constants.FinalizerName) {
+		controllerutil.AddFinalizer(pn, constants.FinalizerName)
+		if err := r.Update(ctx, pn); err != nil {
+			log.Error(err, "failed to add finalizer")
+			return ctrl.Result{}, err
+		}
+	}
+
 	_, err = r.VpcAPI.GetPrivateNetwork(&vpc.GetPrivateNetworkRequest{
 		Zone:             scw.Zone(pn.Spec.Zone),
 		PrivateNetworkID: pn.Spec.ID,
@@ -218,8 +165,8 @@ func (r *PrivateNetworkReconciler) Reconcile(req ctrl.Request) (ctrl.Result, err
 		nicsList := &vpcv1alpha1.NetworkInterfaceList{}
 		err = r.Client.List(ctx, nicsList,
 			client.MatchingLabels{
-				privateNetworkLabel: pn.Name,
-				nodeLabel:           node.Name,
+				constants.PrivateNetworkLabel: pn.Name,
+				constants.NodeLabel:           node.Name,
 			},
 		)
 		if err != nil {
@@ -227,7 +174,7 @@ func (r *PrivateNetworkReconciler) Reconcile(req ctrl.Request) (ctrl.Result, err
 			return ctrl.Result{RequeueAfter: RequeueDuration}, err
 		}
 
-		server, err := r.getServerFromNode(&node)
+		server, err := getServerFromNode(r.InstanceAPI, &node)
 		if err != nil {
 			log.Error(err, fmt.Sprintf("could not get scaleway server from node %s", node.Name))
 			break
@@ -257,6 +204,7 @@ func (r *PrivateNetworkReconciler) Reconcile(req ctrl.Request) (ctrl.Result, err
 			log.Error(fmt.Errorf("node %s have %d networkInterfaces instead of at most one", node.Name, len(nicsList.Items)), "could not handle node")
 			return ctrl.Result{RequeueAfter: RequeueDuration}, err
 		}
+
 		if len(nicsList.Items) == 0 {
 			nic, err := r.constructNetworkInterfaceForPrivateNetwork(pn, node.Name)
 			if err != nil {
@@ -286,7 +234,6 @@ func (r *PrivateNetworkReconciler) Reconcile(req ctrl.Request) (ctrl.Result, err
 			log.Info(fmt.Sprintf("Successfully created networkInterface %s on node %s", nic.Name, node.Name))
 		}
 	}
-	// TODO handle node deletion -> nic deletion
 
 	return ctrl.Result{}, nil
 }
@@ -308,13 +255,13 @@ func (r *PrivateNetworkReconciler) constructNetworkInterfaceForPrivateNetwork(pn
 	for k, v := range pn.Labels {
 		nic.Labels[k] = v
 	}
-	nic.Labels[privateNetworkLabel] = pn.Name
-	nic.Labels[nodeLabel] = nodeName
+	nic.Labels[constants.PrivateNetworkLabel] = pn.Name
+	nic.Labels[constants.NodeLabel] = nodeName
 	if err := ctrl.SetControllerReference(pn, nic, r.Scheme); err != nil {
 		return nil, err
 	}
-	controllerutil.AddFinalizer(nic, finalizerName)
-	controllerutil.AddFinalizer(nic, ipFinalizerName)
+	controllerutil.AddFinalizer(nic, constants.FinalizerName)
+	controllerutil.AddFinalizer(nic, constants.IPFinalizerName)
 
 	return nic, nil
 }
@@ -341,67 +288,6 @@ func (r *PrivateNetworkReconciler) SetupWithManager(mgr ctrl.Manager) error {
 					})
 				}
 			},
-			DeleteFunc: func(e event.DeleteEvent, q workqueue.RateLimitingInterface) {
-				pnsList := &vpcv1alpha1.PrivateNetworkList{}
-				err := r.Client.List(context.Background(), pnsList)
-				if err != nil {
-					r.Log.Error(err, "unable to sync privatenetwork on node creation")
-					return
-				}
-				for _, pn := range pnsList.Items {
-					q.Add(reconcile.Request{
-						NamespacedName: types.NamespacedName{
-							Name: pn.Name,
-						},
-					})
-				}
-			},
 		}).
 		Complete(r)
-}
-
-func (r *PrivateNetworkReconciler) getServerFromNode(node *corev1.Node) (*instance.Server, error) {
-	instanceID := ""
-	zone := ""
-	if node.Spec.ProviderID != "" {
-		providerID := node.Spec.ProviderID
-		if providerIDRegexp.MatchString(providerID) {
-			match := providerIDRegexp.FindStringSubmatch(providerID)
-
-			for i, name := range providerIDRegexp.SubexpNames() {
-				if i != 0 && name != "" {
-					if match[i] != "" {
-						switch name {
-						case regexpUUID:
-							instanceID = match[i]
-						case regexpLocalization:
-							zone = match[i]
-						}
-					}
-				}
-			}
-		}
-	}
-
-	if instanceID != "" {
-		serverResp, err := r.InstanceAPI.GetServer(&instance.GetServerRequest{
-			Zone:     scw.Zone(zone),
-			ServerID: instanceID,
-		})
-		if err == nil {
-			return serverResp.Server, nil
-		}
-	}
-
-	serversListResp, err := r.InstanceAPI.ListServers(&instance.ListServersRequest{
-		Zone: scw.Zone(zone),
-		Name: scw.StringPtr(node.Name),
-	})
-	if err != nil {
-		return nil, err
-	}
-	if len(serversListResp.Servers) != 1 {
-		return nil, fmt.Errorf("found %d servers with name %s instead of 1", len(serversListResp.Servers), node.Name)
-	}
-	return serversListResp.Servers[0], nil
 }

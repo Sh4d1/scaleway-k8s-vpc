@@ -72,8 +72,8 @@ deploy: manifests
 	kustomize build config/default | kubectl apply -f -
 
 rbac: controller-gen
-	$(CONTROLLER_GEN) rbac:roleName=controller-role paths="./controllers/privatenetwork_controller.go" output:stdout > config/rbac/controller-role.yaml
-	$(CONTROLLER_GEN) rbac:roleName=node-role paths="./controllers/networkinterface_controller.go" output:stdout > config/rbac/node-role.yaml
+	$(CONTROLLER_GEN) rbac:roleName=controller-role paths="./controllers/" output:stdout > config/rbac/controller-role.yaml
+	$(CONTROLLER_GEN) rbac:roleName=node-role paths="./nodes/" output:stdout > config/rbac/node-role.yaml
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: rbac controller-gen
