@@ -29,7 +29,8 @@ type NetworkInterfaceSpec struct {
 	NodeName string `json:"nodeName"`
 
 	// Address is the address of the interface
-	Address string `json:"address"`
+	// deprecated
+	Address string `json:"address,omitempty"`
 }
 
 // NetworkInterfaceStatus defines the observed state of NetworkInterface
@@ -39,12 +40,15 @@ type NetworkInterfaceStatus struct {
 
 	// MacAddress is the mac address of the interface
 	MacAddress string `json:"macAddress"`
+
+	// Address is the address of the interface
+	Address string `json:"address,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName=ni;nif;networkinterface;netiface;niface
-// +kubebuilder:printcolumn:name="address",type="string",JSONPath=".spec.address"
+// +kubebuilder:printcolumn:name="address",type="string",JSONPath=".status.address"
 // +kubebuilder:printcolumn:name="node name",type="string",JSONPath=".spec.nodeName"
 // +kubebuilder:printcolumn:name="mac address",type="string",JSONPath=".status.macAddress"
 // +kubebuilder:printcolumn:name="link name",type="string",JSONPath=".status.linkName"

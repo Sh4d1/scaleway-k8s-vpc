@@ -25,8 +25,8 @@ spec:
     - jsonPath: .spec.id
       name: id
       type: string
-    - jsonPath: .spec.cidr
-      name: cidr
+    - jsonPath: .spec.ipam.type
+      name: ipam type
       type: string
     name: v1alpha1
     schema:
@@ -45,11 +45,30 @@ spec:
             description: PrivateNetworkSpec defines the desired state of PrivateNetwork
             properties:
               cidr:
-                description: CIDR is the CIDR of the PrivateNetwork
+                description: CIDR is the CIDR of the PrivateNetwork deprecated
                 type: string
               id:
                 description: ID is the ID of the PrivateNetwork
                 type: string
+              ipam:
+                description: PrivateNetworkIPAM defines the IPAM for the PrivateNetwork
+                properties:
+                  static:
+                    properties:
+                      cidr:
+                        type: string
+                    required:
+                    - cidr
+                    type: object
+                  type:
+                    description: IPAMType represents a type of IPAM
+                    enum:
+                    - DHCP
+                    - Static
+                    type: string
+                required:
+                - type
+                type: object
               masquerade:
                 default: true
                 description: Masquerade represents whether the private network needs to be masqueraded
@@ -72,7 +91,6 @@ spec:
                 description: Zone is the Zone of the PrivateNetwork Will default to the SCW_DEFAULT_ZONE env variable
                 type: string
             required:
-            - cidr
             - id
             type: object
           status:

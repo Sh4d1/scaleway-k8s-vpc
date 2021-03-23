@@ -24,13 +24,31 @@ metadata:
   name: my-privatenetwork
 spec:
   id: <private network ID>
-  cidr: 192.168.0.0/24
+  ipam:
+    type: Static
+    static:
+      cidr: 192.168.0.0/24
   routes:
   - to: 1.2.3.4/16
     via: 192.168.0.10
 ```
 
 This will attach the private network to all nodes in the cluster, set up the interfaces with IPs in the range, and add the routes if needed.
+
+If you have a DHCP running in the private network you can use it to assign IPs:
+```yaml
+apiVersion: vpc.scaleway.com/v1alpha1
+kind: PrivateNetwork
+metadata:
+  name: my-privatenetwork
+spec:
+  id: <private network ID>
+  ipam:
+    type: DHCP
+  routes:
+  - to: 1.2.3.4/16
+    via: 192.168.0.10
+```
 
 ## Contribution
 

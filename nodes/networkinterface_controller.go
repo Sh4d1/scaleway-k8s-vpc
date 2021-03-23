@@ -71,17 +71,46 @@ func (r *NetworkInterfaceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, e
 	if nic.Spec.NodeName != r.NodeName {
 		return ctrl.Result{}, nil
 	}
+
+	pnet := vpcv1alpha1.PrivateNetwork{}
+	err = r.Client.Get(ctx, types.NamespacedName{Name: nic.OwnerReferences[0].Name}, &pnet)
+	if err != nil {
+		log.Error(err, "unable to get private network")
+		return ctrl.Result{}, err
+	}
+
 	if nic.Status.MacAddress == "" {
 		return ctrl.Result{RequeueAfter: time.Second * 1}, nil
 	}
 
 	if !nic.ObjectMeta.GetDeletionTimestamp().IsZero() {
 		if controllerutil.ContainsFinalizer(nic, constants.FinalizerName) {
-			err := r.NICs.TearDownLink(nic.Status.MacAddress, nic.Spec.Address)
-			if err != nil {
-				log.Error(err, "unable to tear down link")
-				return ctrl.Result{}, err
+
+			if pnet.Spec.IPAM == nil {
+				err := r.NICs.TearDownStaticLink(nic.Status.MacAddress, nic.Spec.Address)
+				if err != nil {
+					log.Error(err, "unable to configure link")
+					return ctrl.Result{}, err
+				}
+			} else {
+				switch pnet.Spec.IPAM.Type {
+				case vpcv1alpha1.IPAMTypeStatic:
+					err := r.NICs.TearDownStaticLink(nic.Status.MacAddress, nic.Status.Address)
+					if err != nil {
+						log.Error(err, "unable to configure link")
+						return ctrl.Result{}, err
+					}
+				case vpcv1alpha1.IPAMTypeDHCP:
+					err := r.NICs.TearDownDHCPLink(nic.Status.MacAddress)
+					if err != nil {
+						log.Error(err, "unable to configure link")
+						return ctrl.Result{}, err
+					}
+				default:
+					return ctrl.Result{}, fmt.Errorf("IPAM type %s not supported", pnet.Spec.IPAM.Type)
+				}
 			}
+
 			controllerutil.RemoveFinalizer(nic, constants.FinalizerName)
 			err = r.Client.Update(ctx, nic)
 			if err != nil {
@@ -123,17 +152,35 @@ func (r *NetworkInterfaceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, e
 		return ctrl.Result{}, err
 	}
 
-	err = r.NICs.ConfigureLink(nic.Status.MacAddress, nic.Spec.Address)
-	if err != nil {
-		log.Error(err, "unable to configure link")
-		return ctrl.Result{}, err
-	}
-
-	pnet := vpcv1alpha1.PrivateNetwork{}
-	err = r.Client.Get(ctx, types.NamespacedName{Name: nic.OwnerReferences[0].Name}, &pnet)
-	if err != nil {
-		log.Error(err, "unable to get private network")
-		return ctrl.Result{}, err
+	if pnet.Spec.IPAM == nil {
+		err := r.NICs.ConfigureStaticLink(nic.Status.MacAddress, nic.Spec.Address)
+		if err != nil {
+			log.Error(err, "unable to configure link")
+			return ctrl.Result{}, err
+		}
+	} else {
+		switch pnet.Spec.IPAM.Type {
+		case vpcv1alpha1.IPAMTypeStatic:
+			err := r.NICs.ConfigureStaticLink(nic.Status.MacAddress, nic.Status.Address)
+			if err != nil {
+				log.Error(err, "unable to configure link")
+				return ctrl.Result{}, err
+			}
+		case vpcv1alpha1.IPAMTypeDHCP:
+			ip, err := r.NICs.ConfigureDHCPLink(nic.Status.MacAddress)
+			if err != nil {
+				log.Error(err, "unable to configure link")
+				return ctrl.Result{}, err
+			}
+			nic.Status.Address = ip
+			err = r.Client.Status().Update(ctx, nic)
+			if err != nil {
+				log.Error(err, "unable to update status")
+				return ctrl.Result{}, err
+			}
+		default:
+			return ctrl.Result{}, fmt.Errorf("IPAM type %s not supported", pnet.Spec.IPAM.Type)
+		}
 	}
 
 	ip, err := iptables.New()

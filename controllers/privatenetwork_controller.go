@@ -88,6 +88,160 @@ func (r *PrivateNetworkReconciler) Reconcile(req ctrl.Request) (ctrl.Result, err
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	if pn.Spec.CIDR != "" {
+		res, err := r.ReconcileDeprecated(req)
+		return res, err
+	}
+
+	if !pn.ObjectMeta.GetDeletionTimestamp().IsZero() {
+		// deletion
+		if controllerutil.ContainsFinalizer(pn, constants.FinalizerName) {
+			nicsList := &vpcv1alpha1.NetworkInterfaceList{}
+			err = r.Client.List(ctx, nicsList,
+				client.MatchingLabels{
+					constants.PrivateNetworkLabel: pn.Name,
+				},
+			)
+			if err != nil {
+				log.Error(err, fmt.Sprintf("could not list NetworkInterface for privateNetwork %s", pn.Name))
+				return ctrl.Result{}, err
+			}
+
+			for _, nic := range nicsList.Items {
+				if nic.ObjectMeta.GetDeletionTimestamp().IsZero() {
+					err := r.Client.Delete(ctx, &nic)
+					if err != nil {
+						log.Error(err, fmt.Sprintf("failed to delete networkInterface %s", nic.Name))
+						return ctrl.Result{}, err
+					}
+				}
+			}
+			if len(nicsList.Items) == 0 {
+				_, err = r.IPAM.DeletePrefix(pn.Spec.CIDR)
+				if err != nil {
+					if !errors.As(err, &goipam.NotFoundError{}) {
+						log.Error(err, "failed to delete PrivateNetwork prefix")
+						return ctrl.Result{}, err
+					}
+				}
+				controllerutil.RemoveFinalizer(pn, constants.FinalizerName)
+				if err := r.Update(ctx, pn); err != nil {
+					log.Error(err, "failed to add finalizer")
+					return ctrl.Result{}, err
+				}
+				return ctrl.Result{}, nil
+			}
+			return ctrl.Result{RequeueAfter: RequeueDuration}, nil
+		}
+		return ctrl.Result{}, nil
+	}
+
+	if !controllerutil.ContainsFinalizer(pn, constants.FinalizerName) {
+		controllerutil.AddFinalizer(pn, constants.FinalizerName)
+		if err := r.Update(ctx, pn); err != nil {
+			log.Error(err, "failed to add finalizer")
+			return ctrl.Result{}, err
+		}
+	}
+
+	_, err = r.VpcAPI.GetPrivateNetwork(&vpc.GetPrivateNetworkRequest{
+		Zone:             scw.Zone(pn.Spec.Zone),
+		PrivateNetworkID: pn.Spec.ID,
+	})
+	if err != nil {
+		log.Error(err, "error getting private network from api")
+		return ctrl.Result{RequeueAfter: RequeueDuration}, err
+	}
+
+	nodesList := &corev1.NodeList{}
+	err = r.Client.List(ctx, nodesList)
+	if err != nil {
+		log.Error(err, "could not list nodes")
+		return ctrl.Result{RequeueAfter: RequeueDuration}, err
+	}
+
+	for _, node := range nodesList.Items {
+		nicsList := &vpcv1alpha1.NetworkInterfaceList{}
+		err = r.Client.List(ctx, nicsList,
+			client.MatchingLabels{
+				constants.PrivateNetworkLabel: pn.Name,
+				constants.NodeLabel:           node.Name,
+			},
+		)
+		if err != nil {
+			log.Error(err, fmt.Sprintf("could not list NetworkInterface for node %s and privateNetwork %s", node.Name, pn.Name))
+			return ctrl.Result{RequeueAfter: RequeueDuration}, err
+		}
+
+		server, err := getServerFromNode(r.InstanceAPI, &node)
+		if err != nil {
+			log.Error(err, fmt.Sprintf("could not get scaleway server from node %s", node.Name))
+			break
+		}
+
+		var privateNIC *instance.PrivateNIC
+		for _, pnic := range server.PrivateNics {
+			if pnic.PrivateNetworkID == pn.Spec.ID {
+				privateNIC = pnic
+				break
+			}
+		}
+		if privateNIC == nil {
+			pnicResp, err := r.InstanceAPI.CreatePrivateNIC(&instance.CreatePrivateNICRequest{
+				Zone:             server.Zone,
+				PrivateNetworkID: pn.Spec.ID,
+				ServerID:         server.ID,
+			})
+			if err != nil {
+				log.Error(err, fmt.Sprintf("unable to create private on server %s", server.ID))
+				return ctrl.Result{RequeueAfter: RequeueDuration}, err
+			}
+			privateNIC = pnicResp.PrivateNic
+		}
+
+		if len(nicsList.Items) > 1 {
+			log.Error(fmt.Errorf("node %s have %d networkInterfaces instead of at most one", node.Name, len(nicsList.Items)), "could not handle node")
+			return ctrl.Result{RequeueAfter: RequeueDuration}, err
+		}
+
+		if len(nicsList.Items) == 0 {
+			nic, err := r.constructNetworkInterfaceForPrivateNetwork(pn, node.Name)
+			if err != nil {
+				log.Error(err, "unable to construct networkInterface from privateNetwork")
+				return ctrl.Result{RequeueAfter: RequeueDuration}, err
+			}
+
+			nic.Spec.ID = privateNIC.ID
+			err = r.Client.Create(ctx, nic)
+			if err != nil {
+				log.Error(err, "could not create networkInterface")
+				return ctrl.Result{RequeueAfter: RequeueDuration}, err
+			}
+			nic.Status.MacAddress = privateNIC.MacAddress
+			err = r.Client.Status().Update(ctx, nic)
+			if err != nil {
+				log.Error(err, "could not update networkInterface status")
+				return ctrl.Result{RequeueAfter: RequeueDuration}, err
+			}
+			log.Info(fmt.Sprintf("Successfully created networkInterface %s on node %s", nic.Name, node.Name))
+		}
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func (r *PrivateNetworkReconciler) ReconcileDeprecated(req ctrl.Request) (ctrl.Result, error) {
+	ctx := context.Background()
+	log := r.Log.WithValues("privatenetwork", req.NamespacedName)
+
+	pn := &vpcv1alpha1.PrivateNetwork{}
+
+	err := r.Get(ctx, req.NamespacedName, pn)
+	if err != nil {
+		log.Error(err, "could not find object")
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
 	prefix, err := r.IPAM.NewPrefix(pn.Spec.CIDR)
 	if err != nil {
 		log.Error(err, "error creating new prefix")
