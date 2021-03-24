@@ -42,4 +42,12 @@ spec:
             - NET_ADMIN
             - SYS_MODULE
           privileged: true
+        volumeMounts:
+        - mountPath: /run/xtables.lock
+          name: xtables-lock
       terminationGracePeriodSeconds: 10
+      volumes:
+      - hostPath:
+          path: /run/xtables.lock
+          type: FileOrCreate
+        name: xtables-lock

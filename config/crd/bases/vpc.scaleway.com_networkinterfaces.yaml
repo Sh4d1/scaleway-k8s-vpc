@@ -23,7 +23,7 @@ spec:
   scope: Cluster
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.address
+    - jsonPath: .status.address
       name: address
       type: string
     - jsonPath: .spec.nodeName
@@ -52,7 +52,7 @@ spec:
             description: NetworkInterfaceSpec defines the desired state of NetworkInterface
             properties:
               address:
-                description: Address is the address of the interface
+                description: Address is the address of the interface deprecated
                 type: string
               id:
                 description: ID is the ID of the NIC
@@ -61,13 +61,15 @@ spec:
                 description: NodeName is the name of the node the interface is attached to
                 type: string
             required:
-            - address
             - id
             - nodeName
             type: object
           status:
             description: NetworkInterfaceStatus defines the observed state of NetworkInterface
             properties:
+              address:
+                description: Address is the address of the interface
+                type: string
               linkName:
                 description: LinkName is the name of the Interface
                 type: string

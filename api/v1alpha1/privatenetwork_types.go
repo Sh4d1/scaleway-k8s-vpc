@@ -30,8 +30,7 @@ type PrivateNetworkSpec struct {
 	// +optional
 	Zone string `json:"zone,omitempty"`
 
-	// CIDR is the CIDR of the PrivateNetwork
-	CIDR string `json:"cidr"`
+	IPAM *PrivateNetworkIPAM `json:"ipam,omitempty"`
 
 	// Routes are the routes injected in the cluster to this PrivateNetwork
 	// +optional
@@ -41,12 +40,37 @@ type PrivateNetworkSpec struct {
 	// +optional
 	// +kubebuilder:default:=true
 	Masquerade bool `json:"masquerade,omitempty"`
+
+	// CIDR is the CIDR of the PrivateNetwork
+	// deprecated
+	CIDR string `json:"cidr,omitempty"`
 }
 
 // PrivateNetworkRoute defines a route from the PrivateNetwork
 type PrivateNetworkRoute struct {
 	To  string `json:"to"`
 	Via string `json:"via"`
+}
+
+// +kubebuilder:validation:Enum=DHCP;Static
+// IPAMType represents a type of IPAM
+type IPAMType string
+
+const (
+	// IPAMTypeDHCP represents the dhcp IPAM type
+	IPAMTypeDHCP IPAMType = "DHCP"
+	// IPAMTypeStatic represents the static IPAM type
+	IPAMTypeStatic IPAMType = "Static"
+)
+
+type PrivateNetworkIPAMStatic struct {
+	CIDR string `json:"cidr"`
+}
+
+// PrivateNetworkIPAM defines the IPAM for the PrivateNetwork
+type PrivateNetworkIPAM struct {
+	Type   IPAMType                  `json:"type"`
+	Static *PrivateNetworkIPAMStatic `json:"static,omitempty"`
 }
 
 // PrivateNetworkStatus defines the observed state of PrivateNetwork
@@ -57,7 +81,7 @@ type PrivateNetworkStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName=pn;privnet;privatenet;privatenetwork
 // +kubebuilder:printcolumn:name="id",type="string",JSONPath=".spec.id"
-// +kubebuilder:printcolumn:name="cidr",type="string",JSONPath=".spec.cidr"
+// +kubebuilder:printcolumn:name="ipam type",type="string",JSONPath=".spec.ipam.type"
 
 // PrivateNetwork is the Schema for the privatenetworks API
 type PrivateNetwork struct {

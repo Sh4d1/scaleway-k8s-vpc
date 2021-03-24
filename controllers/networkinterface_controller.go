@@ -78,6 +78,13 @@ func (r *NetworkInterfaceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, e
 
 	nodeDeleted := err != nil && apierrors.IsNotFound(err)
 
+	pn := vpcv1alpha1.PrivateNetwork{}
+	err = r.Client.Get(ctx, types.NamespacedName{Name: nic.OwnerReferences[0].Name}, &pn)
+	if err != nil {
+		log.Error(err, "unable to get private network")
+		return ctrl.Result{}, err
+	}
+
 	if nic.ObjectMeta.GetDeletionTimestamp().IsZero() {
 		if nodeDeleted {
 			err := r.Client.Delete(ctx, nic)
@@ -87,7 +94,37 @@ func (r *NetworkInterfaceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, e
 			}
 			return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
 		}
-		// nothing to do
+		if len(nic.Status.Address) == 0 && pn.Spec.IPAM != nil {
+			switch pn.Spec.IPAM.Type {
+			case vpcv1alpha1.IPAMTypeDHCP:
+				// this case is handled in the node controller
+			case vpcv1alpha1.IPAMTypeStatic:
+				if pn.Spec.IPAM.Static == nil {
+					return ctrl.Result{}, fmt.Errorf("Static CIDR can't be empty on static ipam mode")
+				}
+				prefix, err := r.IPAM.NewPrefix(pn.Spec.IPAM.Static.CIDR)
+				if err != nil {
+					log.Error(err, "error creating new prefix")
+					return ctrl.Result{}, err
+				}
+				ip, err := r.IPAM.AcquireIP(prefix.Cidr)
+				if err != nil {
+					log.Error(err, fmt.Sprintf("error acquiring ip for cidr %s", prefix.Cidr))
+					return ctrl.Result{RequeueAfter: RequeueDuration}, err
+				}
+
+				// TODO have a better idea :D
+				nic.Status.Address = ip.IP.String() + "/" + strings.Split(prefix.Cidr, "/")[1]
+				err = r.Client.Status().Update(ctx, nic)
+				if err != nil {
+					log.Error(err, fmt.Sprintf("failed to update networkInterface %s", nic.Name))
+					return ctrl.Result{}, err
+				}
+			default:
+				return ctrl.Result{}, fmt.Errorf("IPAM type %s is not supported", pn.Spec.IPAM.Type)
+			}
+		}
+		// nothing left to do
 		return ctrl.Result{}, nil
 	}
 
@@ -104,22 +141,21 @@ func (r *NetworkInterfaceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, e
 	}
 
 	if !controllerutil.ContainsFinalizer(nic, constants.FinalizerName) {
-		pn := vpcv1alpha1.PrivateNetwork{}
-		err = r.Client.Get(ctx, types.NamespacedName{Name: nic.OwnerReferences[0].Name}, &pn)
-		if err != nil {
-			log.Error(err, "unable to get private network")
-			return ctrl.Result{}, err
-		}
+		if pn.Spec.IPAM != nil && pn.Spec.IPAM.Type == vpcv1alpha1.IPAMTypeStatic {
+			if pn.Spec.IPAM.Static == nil {
+				return ctrl.Result{}, fmt.Errorf("Static CIDR can't be empty on static ipam mode")
+			}
 
-		err := r.IPAM.ReleaseIPFromPrefix(pn.Spec.CIDR, strings.Split(nic.Spec.Address, "/")[0])
-		if err != nil {
-			if !errors.As(err, &goipam.NotFoundError{}) {
-				log.Error(err, fmt.Sprintf("could not delete IP %s from prefix %s", nic.Spec.Address, pn.Spec.CIDR))
-				return ctrl.Result{}, err
+			err := r.IPAM.ReleaseIPFromPrefix(pn.Spec.IPAM.Static.CIDR, strings.Split(nic.Spec.Address, "/")[0])
+			if err != nil {
+				if !errors.As(err, &goipam.NotFoundError{}) {
+					log.Error(err, fmt.Sprintf("could not delete IP %s from prefix %s", nic.Spec.Address, pn.Spec.IPAM.Static.CIDR))
+					return ctrl.Result{}, err
+				}
 			}
 		}
 		node := corev1.Node{}
-		err = r.Client.Get(ctx, types.NamespacedName{Name: nic.Spec.NodeName}, &node)
+		err := r.Client.Get(ctx, types.NamespacedName{Name: nic.Spec.NodeName}, &node)
 		if err != nil && !apierrors.IsNotFound(err) {
 			log.Error(err, "error getting node")
 			return ctrl.Result{}, err
