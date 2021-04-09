@@ -55,7 +55,13 @@ spec:
                 properties:
                   static:
                     properties:
+                      availableRanges:
+                        description: AvailabeRanges allows to restrict which ranges of addresses should be used when choosing an IP address Defaults to the whole CIDR
+                        items:
+                          type: string
+                        type: array
                       cidr:
+                        description: CIDR represents the CIDR associated to this private network
                         type: string
                     required:
                     - cidr

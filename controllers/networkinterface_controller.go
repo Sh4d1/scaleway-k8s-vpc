@@ -102,21 +102,44 @@ func (r *NetworkInterfaceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, e
 				if pn.Spec.IPAM.Static == nil {
 					return ctrl.Result{}, fmt.Errorf("Static CIDR can't be empty on static ipam mode")
 				}
-				prefix, err := r.IPAM.NewPrefix(pn.Spec.IPAM.Static.CIDR)
-				if err != nil {
-					log.Error(err, "error creating new prefix")
-					return ctrl.Result{}, err
+				cidrs := []string{pn.Spec.IPAM.Static.CIDR}
+				if len(pn.Spec.IPAM.Static.AvailabeRanges) != 0 {
+					cidrs = pn.Spec.IPAM.Static.AvailabeRanges
 				}
-				ip, err := r.IPAM.AcquireIP(prefix.Cidr)
-				if err != nil {
-					log.Error(err, fmt.Sprintf("error acquiring ip for cidr %s", prefix.Cidr))
+
+				var ip *goipam.IP
+				var chosenCidr string
+
+				for _, cidr := range cidrs {
+					prefix, err := r.IPAM.NewPrefix(cidr)
+					if err != nil {
+						log.Error(err, "error creating new prefix")
+						continue
+					}
+					ip, err = r.IPAM.AcquireIP(prefix.Cidr)
+					if err != nil {
+						log.Error(err, fmt.Sprintf("error acquiring ip for cidr %s", prefix.Cidr))
+						continue
+					}
+					chosenCidr = prefix.Cidr
+					break
+				}
+
+				if ip == nil {
+					err := fmt.Errorf("could not acquire IP")
+					log.Error(err, "error while testing all cidrs")
 					return ctrl.Result{RequeueAfter: RequeueDuration}, err
 				}
 
 				// TODO have a better idea :D
-				nic.Status.Address = ip.IP.String() + "/" + strings.Split(prefix.Cidr, "/")[1]
+				nic.Status.Address = ip.IP.String() + "/" + strings.Split(pn.Spec.IPAM.Static.CIDR, "/")[1]
+				nic.Status.ParentCIDR = chosenCidr
 				err = r.Client.Status().Update(ctx, nic)
 				if err != nil {
+					ipamErr := r.IPAM.ReleaseIPFromPrefix(chosenCidr, strings.Split(nic.Status.Address, "/")[0])
+					if ipamErr != nil {
+						log.Error(ipamErr, fmt.Sprintf("failed to release IP %s", nic.Status.Address))
+					}
 					log.Error(err, fmt.Sprintf("failed to update networkInterface %s", nic.Name))
 					return ctrl.Result{}, err
 				}
@@ -146,10 +169,14 @@ func (r *NetworkInterfaceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, e
 				return ctrl.Result{}, fmt.Errorf("Static CIDR can't be empty on static ipam mode")
 			}
 
-			err := r.IPAM.ReleaseIPFromPrefix(pn.Spec.IPAM.Static.CIDR, strings.Split(nic.Spec.Address, "/")[0])
+			cidr := pn.Spec.IPAM.Static.CIDR
+			if nic.Status.ParentCIDR != "" {
+				cidr = nic.Status.ParentCIDR
+			}
+			err := r.IPAM.ReleaseIPFromPrefix(cidr, strings.Split(nic.Status.Address, "/")[0])
 			if err != nil {
 				if !errors.As(err, &goipam.NotFoundError{}) {
-					log.Error(err, fmt.Sprintf("could not delete IP %s from prefix %s", nic.Spec.Address, pn.Spec.IPAM.Static.CIDR))
+					log.Error(err, fmt.Sprintf("could not delete IP %s from prefix %s", nic.Status.Address, cidr))
 					return ctrl.Result{}, err
 				}
 			}

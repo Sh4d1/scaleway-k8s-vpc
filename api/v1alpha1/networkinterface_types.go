@@ -43,6 +43,9 @@ type NetworkInterfaceStatus struct {
 
 	// Address is the address of the interface
 	Address string `json:"address,omitempty"`
+
+	// ParentCIDR is the parent cidr of the Address
+	ParentCIDR string `json:"parentCidr,omitempty"`
 }
 
 // +kubebuilder:object:root=true
