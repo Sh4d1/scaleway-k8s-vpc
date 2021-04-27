@@ -1,0 +1,61 @@
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    {{- include "scaleway-k8s-vpc.labels" . | nindent 4 }}
+    app.kubernetes.io/component: node
+  name: {{ include "scaleway-k8s-vpc.node.fullname" . }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "scaleway-k8s-vpc.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: node
+  template:
+    metadata:
+      labels:
+        {{- include "scaleway-k8s-vpc.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: node
+    spec:
+      containers:
+        - name: node
+          command:
+            - /node
+          env:
+          - name: NODE_NAME
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: spec.nodeName
+          image: {{ .Values.node.image.repository }}:{{ .Values.node.image.tag }}
+          imagePullPolicy: {{ .Values.node.image.pullPolicy }}
+          resources: {{ toYaml .Values.node.resources | nindent 12 }}
+          securityContext:
+            capabilities:
+              add:
+              - NET_ADMIN
+              - SYS_MODULE
+            privileged: true
+          volumeMounts:
+            - mountPath: /run/xtables.lock
+              name: xtables-lock
+      hostNetwork: true
+    {{- if .Values.node.priorityClassName }}
+      priorityClassName: {{ .Values.node.priorityClassName }}
+    {{- end }}
+    {{- if .Values.node.nodeSelector }}
+      nodeSelector: {{ toYaml .Values.node.nodeSelector | nindent 8 }}
+    {{- end }}
+        {{- if .Values.node.tolerations }}
+      tolerations: {{ toYaml .Values.node.tolerations | nindent 8 }}
+    {{- end }}
+    {{- if .Values.node.affinity }}
+      affinity: {{ toYaml .Values.node.affinity | nindent 8 }}
+    {{- end }}
+      serviceAccountName: {{ include "scaleway-k8s-vpc.node.fullname" . }}
+      terminationGracePeriodSeconds: 10
+      volumes:
+      - hostPath:
+          path: /run/xtables.lock
+          type: FileOrCreate
+        name: xtables-lock

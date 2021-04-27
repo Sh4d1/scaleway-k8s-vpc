@@ -1,0 +1,108 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.5.0
+  creationTimestamp: null
+  name: privatenetworks.vpc.scaleway.com
+spec:
+  group: vpc.scaleway.com
+  names:
+    kind: PrivateNetwork
+    listKind: PrivateNetworkList
+    plural: privatenetworks
+    shortNames:
+    - pn
+    - privnet
+    - privatenet
+    - privatenetwork
+    singular: privatenetwork
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.id
+      name: id
+      type: string
+    - jsonPath: .spec.ipam.type
+      name: ipam type
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: PrivateNetwork is the Schema for the privatenetworks API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: PrivateNetworkSpec defines the desired state of PrivateNetwork
+            properties:
+              cidr:
+                description: CIDR is the CIDR of the PrivateNetwork deprecated
+                type: string
+              id:
+                description: ID is the ID of the PrivateNetwork
+                type: string
+              ipam:
+                description: PrivateNetworkIPAM defines the IPAM for the PrivateNetwork
+                properties:
+                  static:
+                    properties:
+                      cidr:
+                        type: string
+                    required:
+                    - cidr
+                    type: object
+                  type:
+                    description: IPAMType represents a type of IPAM
+                    enum:
+                    - DHCP
+                    - Static
+                    type: string
+                required:
+                - type
+                type: object
+              masquerade:
+                default: true
+                description: Masquerade represents whether the private network needs to be masqueraded
+                type: boolean
+              routes:
+                description: Routes are the routes injected in the cluster to this PrivateNetwork
+                items:
+                  description: PrivateNetworkRoute defines a route from the PrivateNetwork
+                  properties:
+                    to:
+                      type: string
+                    via:
+                      type: string
+                  required:
+                  - to
+                  - via
+                  type: object
+                type: array
+              zone:
+                description: Zone is the Zone of the PrivateNetwork Will default to the SCW_DEFAULT_ZONE env variable
+                type: string
+            required:
+            - id
+            type: object
+          status:
+            description: PrivateNetworkStatus defines the observed state of PrivateNetwork
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []

@@ -1,0 +1,8 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "scaleway-k8s-vpc.controller.fullname" . }}
+  labels:
+    {{- include "scaleway-k8s-vpc.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
