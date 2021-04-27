@@ -1,0 +1,33 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "scaleway-k8s-vpc.node.fullname" . }}
+  labels:
+    {{- include "scaleway-k8s-vpc.labels" . | nindent 4 }}
+    app.kubernetes.io/component: node
+rules:
+- apiGroups:
+  - vpc.scaleway.com
+  resources:
+  - networkinterfaces
+  verbs:
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - vpc.scaleway.com
+  resources:
+  - networkinterfaces/status
+  verbs:
+  - get
+  - update
+- apiGroups:
+  - vpc.scaleway.com
+  resources:
+  - privatenetworks
+  verbs:
+  - get
+  - list
+  - watch

@@ -1,0 +1,6 @@
+---
+apiVersion: v2
+name: scaleway-k8s-vpc
+description: Deploy scaleway vpc operator
+type: application
+version: 0.1.0

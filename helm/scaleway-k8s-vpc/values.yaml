@@ -1,0 +1,92 @@
+# Default values for all-apps.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+## Overrides for generated resource names
+# See templates/_helpers.tpl
+# nameOverride:
+# fullnameOverride:
+
+controller:
+  name: controller
+  image:
+    repository: sh4d1/scaleway-k8s-vpc
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+  resources:
+    limits:
+      cpu: 100m
+      memory: 30Mi
+    requests:
+      cpu: 100m
+      memory: 20Mi
+
+  ## Node labels for controller pod assignment
+  ## Ref: https://kubernetes.io/docs/user-guide/node-selection/
+  ##
+  nodeSelector:
+    kubernetes.io/os: linux
+
+  ## Node tolerations for server scheduling to nodes with taints
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
+  ##
+  tolerations: []
+  #  - key: "key"
+  #    operator: "Equal|Exists"
+  #    value: "value"
+  #    effect: "NoSchedule|PreferNoSchedule|NoExecute(1.6 only)"
+
+  ## Affinity and anti-affinity
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+  ##
+  affinity: {}
+
+  secret:
+    enabled: false
+    name: '{{ include "scaleway-k8s-vpc.controller.fullname" . }}'
+    values:
+      SCW_ACCESS_KEY: <YOUR-ACCESS-KEY>
+      SCW_SECRET_KEY: <YOUR-SECRET-KEY>
+      SCW_DEFAULT_PROJECT_ID: <YOUR-PROJECT-ID>
+      SCW_DEFAULT_ZONE: <YOUR-DEFAULT-REGION>
+
+node:
+  name: node
+  image:
+    repository: sh4d1/scaleway-k8s-vpc-node
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+  priorityClassName: system-node-critical
+
+  ## Node labels for controller pod assignment
+  ## Ref: https://kubernetes.io/docs/user-guide/node-selection/
+  ##
+  nodeSelector:
+    kubernetes.io/os: linux
+
+  ## Node tolerations for server scheduling to nodes with taints
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
+  ##
+  tolerations:
+    - effect: NoSchedule
+      operator: Exists
+  #  - key: "key"
+  #    operator: "Equal|Exists"
+  #    value: "value"
+  #    effect: "NoSchedule|PreferNoSchedule|NoExecute(1.6 only)"
+
+  ## Affinity and anti-affinity
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+  ##
+  affinity: {}
+
+
+  resources:
+    limits:
+      cpu: 100m
+      memory: 30Mi
+    requests:
+      cpu: 100m
+      memory: 20Mi
