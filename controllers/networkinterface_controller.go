@@ -103,8 +103,8 @@ func (r *NetworkInterfaceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, e
 					return ctrl.Result{}, fmt.Errorf("Static CIDR can't be empty on static ipam mode")
 				}
 				cidrs := []string{pn.Spec.IPAM.Static.CIDR}
-				if len(pn.Spec.IPAM.Static.AvailabeRanges) != 0 {
-					cidrs = pn.Spec.IPAM.Static.AvailabeRanges
+				if len(pn.Spec.IPAM.Static.AvailableRanges) != 0 {
+					cidrs = pn.Spec.IPAM.Static.AvailableRanges
 				}
 
 				var ip *goipam.IP
