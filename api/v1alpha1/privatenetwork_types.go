@@ -66,9 +66,9 @@ const (
 type PrivateNetworkIPAMStatic struct {
 	// CIDR represents the CIDR associated to this private network
 	CIDR string `json:"cidr"`
-	// AvailabeRanges allows to restrict which ranges of addresses should be used when choosing an IP address
+	// AvailableRanges allows to restrict which ranges of addresses should be used when choosing an IP address
 	// Defaults to the whole CIDR
-	AvailabeRanges []string `json:"availableRanges,omitempty"`
+	AvailableRanges []string `json:"availableRanges,omitempty"`
 }
 
 // PrivateNetworkIPAM defines the IPAM for the PrivateNetwork
