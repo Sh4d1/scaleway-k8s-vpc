@@ -79,9 +79,6 @@ spec:
               parentCidr:
                 description: ParentCIDR is the parent cidr of the Address
                 type: string
-            required:
-            - linkName
-            - macAddress
             type: object
         type: object
     served: true
