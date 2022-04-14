@@ -52,8 +52,8 @@ type NetworkInterfaceReconciler struct {
 	InstanceAPI *instance.API
 }
 
-// +kubebuilder:rbac:groups=vpc.scaleway.com,resources=networkinterfaces,verbs=get;list;watch;update
-// +kubebuilder:rbac:groups=vpc.scaleway.com,resources=networkinterfaces/status,verbs=get;update
+// +kubebuilder:rbac:groups=vpc.scaleway.com,resources=networkinterfaces,verbs=get;list;watch;patch
+// +kubebuilder:rbac:groups=vpc.scaleway.com,resources=networkinterfaces/status,verbs=get;patch
 // +kubebuilder:rbac:groups=vpc.scaleway.com,resources=privatenetworks,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
 
@@ -132,9 +132,10 @@ func (r *NetworkInterfaceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, e
 				}
 
 				// TODO have a better idea :D
+				patch := client.MergeFrom(nic.DeepCopy())
 				nic.Status.Address = ip.IP.String() + "/" + strings.Split(pn.Spec.IPAM.Static.CIDR, "/")[1]
 				nic.Status.ParentCIDR = chosenCidr
-				err = r.Client.Status().Update(ctx, nic)
+				err = r.Client.Status().Patch(ctx, nic, patch)
 				if err != nil {
 					ipamErr := r.IPAM.ReleaseIPFromPrefix(chosenCidr, strings.Split(nic.Status.Address, "/")[0])
 					if ipamErr != nil {
@@ -154,8 +155,9 @@ func (r *NetworkInterfaceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, e
 	// nic is deleting
 
 	if controllerutil.ContainsFinalizer(nic, constants.FinalizerName) && nodeDeleted {
+		patch := client.MergeFrom(nic.DeepCopy())
 		controllerutil.RemoveFinalizer(nic, constants.FinalizerName)
-		err = r.Client.Update(ctx, nic)
+		err = r.Client.Patch(ctx, nic, patch)
 		if err != nil {
 			log.Error(err, fmt.Sprintf("failed to patch networkInterface %s", nic.Name))
 			return ctrl.Result{}, err
@@ -213,8 +215,9 @@ func (r *NetworkInterfaceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, e
 			}
 		}
 
+		patch := client.MergeFrom(nic.DeepCopy())
 		controllerutil.RemoveFinalizer(nic, constants.IPFinalizerName)
-		err = r.Client.Update(ctx, nic)
+		err = r.Client.Patch(ctx, nic, patch)
 		if err != nil {
 			log.Error(err, fmt.Sprintf("failed to remove finalizer on networkInterface %s", nic.Name))
 			return ctrl.Result{}, err

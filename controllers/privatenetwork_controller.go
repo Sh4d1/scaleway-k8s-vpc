@@ -124,8 +124,9 @@ func (r *PrivateNetworkReconciler) Reconcile(req ctrl.Request) (ctrl.Result, err
 						return ctrl.Result{}, err
 					}
 				}
+				patch := client.MergeFrom(pn.DeepCopy())
 				controllerutil.RemoveFinalizer(pn, constants.FinalizerName)
-				if err := r.Update(ctx, pn); err != nil {
+				if err := r.Patch(ctx, pn, patch); err != nil {
 					log.Error(err, "failed to add finalizer")
 					return ctrl.Result{}, err
 				}
@@ -137,8 +138,9 @@ func (r *PrivateNetworkReconciler) Reconcile(req ctrl.Request) (ctrl.Result, err
 	}
 
 	if !controllerutil.ContainsFinalizer(pn, constants.FinalizerName) {
+		patch := client.MergeFrom(pn.DeepCopy())
 		controllerutil.AddFinalizer(pn, constants.FinalizerName)
-		if err := r.Update(ctx, pn); err != nil {
+		if err := r.Patch(ctx, pn, patch); err != nil {
 			log.Error(err, "failed to add finalizer")
 			return ctrl.Result{}, err
 		}
@@ -217,10 +219,11 @@ func (r *PrivateNetworkReconciler) Reconcile(req ctrl.Request) (ctrl.Result, err
 				log.Error(err, "could not create networkInterface")
 				return ctrl.Result{RequeueAfter: RequeueDuration}, err
 			}
+			patch := client.MergeFrom(nic.DeepCopy())
 			nic.Status.MacAddress = privateNIC.MacAddress
-			err = r.Client.Status().Update(ctx, nic)
+			err = r.Client.Status().Patch(ctx, nic, patch)
 			if err != nil {
-				log.Error(err, "could not update networkInterface status")
+				log.Error(err, "could not patch networkInterface status")
 				return ctrl.Result{RequeueAfter: RequeueDuration}, err
 			}
 			log.Info(fmt.Sprintf("Successfully created networkInterface %s on node %s", nic.Name, node.Name))
@@ -279,8 +282,9 @@ func (r *PrivateNetworkReconciler) ReconcileDeprecated(req ctrl.Request) (ctrl.R
 						return ctrl.Result{}, err
 					}
 				}
+				patch := client.MergeFrom(pn.DeepCopy())
 				controllerutil.RemoveFinalizer(pn, constants.FinalizerName)
-				if err := r.Update(ctx, pn); err != nil {
+				if err := r.Patch(ctx, pn, patch); err != nil {
 					log.Error(err, "failed to add finalizer")
 					return ctrl.Result{}, err
 				}
@@ -292,8 +296,9 @@ func (r *PrivateNetworkReconciler) ReconcileDeprecated(req ctrl.Request) (ctrl.R
 	}
 
 	if !controllerutil.ContainsFinalizer(pn, constants.FinalizerName) {
+		patch := client.MergeFrom(pn.DeepCopy())
 		controllerutil.AddFinalizer(pn, constants.FinalizerName)
-		if err := r.Update(ctx, pn); err != nil {
+		if err := r.Patch(ctx, pn, patch); err != nil {
 			log.Error(err, "failed to add finalizer")
 			return ctrl.Result{}, err
 		}
@@ -379,10 +384,11 @@ func (r *PrivateNetworkReconciler) ReconcileDeprecated(req ctrl.Request) (ctrl.R
 				log.Error(err, "could not create networkInterface")
 				return ctrl.Result{RequeueAfter: RequeueDuration}, err
 			}
+			patch := client.MergeFrom(nic.DeepCopy())
 			nic.Status.MacAddress = privateNIC.MacAddress
-			err = r.Client.Status().Update(ctx, nic)
+			err = r.Client.Status().Patch(ctx, nic, patch)
 			if err != nil {
-				log.Error(err, "could not update networkInterface status")
+				log.Error(err, "could not patch networkInterface status")
 				return ctrl.Result{RequeueAfter: RequeueDuration}, err
 			}
 			log.Info(fmt.Sprintf("Successfully created networkInterface %s on node %s", nic.Name, node.Name))
