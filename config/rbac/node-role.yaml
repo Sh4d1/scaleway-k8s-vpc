@@ -13,7 +13,7 @@ rules:
   verbs:
   - get
   - list
-  - update
+  - patch
   - watch
 - apiGroups:
   - vpc.scaleway.com
@@ -21,7 +21,7 @@ rules:
   - networkinterfaces/status
   verbs:
   - get
-  - update
+  - patch
 - apiGroups:
   - vpc.scaleway.com
   resources:

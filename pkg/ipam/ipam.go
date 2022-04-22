@@ -139,12 +139,14 @@ func (c *ConfigMapIPAM) CreatePrefix(prefix goipam.Prefix) (goipam.Prefix, error
 	if err != nil {
 		return goipam.Prefix{}, err
 	}
+
+	patch := client.MergeFrom(cm.DeepCopy())
 	if cm.BinaryData == nil {
 		cm.BinaryData = make(map[string][]byte)
 	}
 	cm.BinaryData[getCmCIDR(prefix.Cidr)] = data
 
-	err = c.client.Update(context.Background(), cm)
+	err = c.client.Patch(context.Background(), cm, patch)
 	if err != nil {
 		return goipam.Prefix{}, err
 	}
@@ -218,9 +220,10 @@ func (c *ConfigMapIPAM) UpdatePrefix(prefix goipam.Prefix) (goipam.Prefix, error
 		return goipam.Prefix{}, err
 	}
 
+	patch := client.MergeFrom(cm.DeepCopy())
 	cm.BinaryData[getCmCIDR(prefix.Cidr)] = data
 
-	return prefix, c.client.Update(context.Background(), cm)
+	return prefix, c.client.Patch(context.Background(), cm, patch)
 }
 
 func (c *ConfigMapIPAM) DeletePrefix(prefix goipam.Prefix) (goipam.Prefix, error) {
@@ -236,7 +239,8 @@ func (c *ConfigMapIPAM) DeletePrefix(prefix goipam.Prefix) (goipam.Prefix, error
 	if !ok {
 		return prefix, nil
 	}
+	patch := client.MergeFrom(cm.DeepCopy())
 	delete(cm.BinaryData, getCmCIDR(prefix.Cidr))
 
-	return prefix, c.client.Update(context.Background(), cm)
+	return prefix, c.client.Patch(context.Background(), cm, patch)
 }
