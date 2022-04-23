@@ -43,6 +43,7 @@ rules:
   - networkinterfaces/status
   verbs:
   - get
+  - patch
   - update
 - apiGroups:
   - vpc.scaleway.com
