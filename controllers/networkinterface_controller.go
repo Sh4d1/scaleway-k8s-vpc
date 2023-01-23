@@ -94,7 +94,7 @@ func (r *NetworkInterfaceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, e
 			}
 			return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
 		}
-		if len(nic.Status.Address) == 0 && pn.Spec.IPAM != nil {
+		if nic.Status.MacAddress != "" && len(nic.Status.Address) == 0 && pn.Spec.IPAM != nil {
 			switch pn.Spec.IPAM.Type {
 			case vpcv1alpha1.IPAMTypeDHCP:
 				// this case is handled in the node controller
