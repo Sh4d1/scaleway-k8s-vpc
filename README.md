@@ -16,6 +16,11 @@ Create and enter your Scaleway credentials with:
 kubectl create -f https://raw.githubusercontent.com/Sh4d1/scaleway-k8s-vpc/main/secret.yaml --edit --namespace scaleway-k8s-vpc-system
 ```
 
+Or with helm
+```shell
+$ helm install scaleway-k8s-vpc helm/scaleway-k8s-vpc
+```
+
 You can now create the following PrivateNetwork object:
 ```yaml
 apiVersion: vpc.scaleway.com/v1alpha1
